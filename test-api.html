@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火山引擎API测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .image-result {
+            margin-top: 10px;
+        }
+        .image-result img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>火山引擎API测试</h1>
+    
+    <div class="test-section">
+        <h2>图片生成测试</h2>
+        <button onclick="testImageGeneration()">测试图片生成</button>
+        <div id="image-result" class="result"></div>
+        <div id="image-display" class="image-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>文本生成测试</h2>
+        <button onclick="testTextGeneration()">测试文本生成</button>
+        <div id="text-result" class="result"></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script>
+        // 测试图片生成
+        async function testImageGeneration() {
+            const resultDiv = document.getElementById('image-result');
+            const imageDiv = document.getElementById('image-display');
+            
+            resultDiv.textContent = '正在生成图片...';
+            imageDiv.innerHTML = '';
+            
+            try {
+                const prompt = '儿童绘本风格插画，小猫去太空探险，第1页，温馨可爱，色彩丰富，卡通风格，适合儿童阅读，高质量插画，明亮色彩，可爱角色，童话风格';
+                
+                const requestBody = {
+                    model: VOLCENGINE_CONFIG.imageModel,
+                    prompt: prompt,
+                    response_format: "url",
+                    size: `${VOLCENGINE_CONFIG.imageConfig.width}x${VOLCENGINE_CONFIG.imageConfig.height}`,
+                    guidance_scale: VOLCENGINE_CONFIG.imageConfig.guidance_scale,
+                    watermark: VOLCENGINE_CONFIG.imageConfig.watermark
+                };
+
+                const response = await fetch(`${VOLCENGINE_CONFIG.apiEndpoint}/api/v3/images/generations`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${VOLCENGINE_CONFIG.accessKey}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`图片生成失败: ${response.status} - ${errorText}`);
+                }
+
+                const data = await response.json();
+                resultDiv.textContent = '图片生成成功！响应数据：\n' + JSON.stringify(data, null, 2);
+                
+                if (data.data && data.data.length > 0 && data.data[0].url) {
+                    const img = document.createElement('img');
+                    img.src = data.data[0].url;
+                    img.alt = '生成的图片';
+                    imageDiv.appendChild(img);
+                }
+            } catch (error) {
+                resultDiv.textContent = '图片生成失败：\n' + error.message;
+                console.error('图片生成错误:', error);
+            }
+        }
+
+        // 测试文本生成
+        async function testTextGeneration() {
+            const resultDiv = document.getElementById('text-result');
+            
+            resultDiv.textContent = '正在生成文本...';
+            
+            try {
+                const prompt = `请为儿童绘本《小猫去太空探险》的第1页写一段温馨有趣的文案，要求：
+1. 语言简单易懂，适合儿童阅读
+2. 长度控制在50字以内
+3. 内容积极向上，富有想象力
+4. 与主题"小猫去太空探险"相关`;
+
+                const requestBody = {
+                    model: VOLCENGINE_CONFIG.textModel,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    max_tokens: VOLCENGINE_CONFIG.textConfig?.max_tokens || 200,
+                    temperature: VOLCENGINE_CONFIG.textConfig?.temperature || 0.7
+                };
+
+                const response = await fetch(`${VOLCENGINE_CONFIG.apiEndpoint}/api/v3/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${VOLCENGINE_CONFIG.accessKey}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`文本生成失败: ${response.status} - ${errorText}`);
+                }
+
+                const data = await response.json();
+                
+                if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+                    resultDiv.textContent = '文本生成成功！\n\n生成的文本：\n' + data.choices[0].message.content.trim() + '\n\n完整响应：\n' + JSON.stringify(data, null, 2);
+                } else {
+                    throw new Error('文本生成响应格式错误');
+                }
+            } catch (error) {
+                resultDiv.textContent = '文本生成失败：\n' + error.message;
+                console.error('文本生成错误:', error);
+            }
+        }
+    </script>
+</body>
+</html>
+

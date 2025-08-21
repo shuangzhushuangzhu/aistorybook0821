@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>火山引擎API调试 - 代理模式</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .config-display {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin: 10px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .image-result {
+            margin-top: 15px;
+        }
+        .image-result img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>火山引擎API调试工具 - 代理模式</h1>
+    
+    <div class="notice">
+        <strong>⚠️ 重要提示：</strong><br>
+        1. 请确保已启动本地服务器：运行 <code>python server.py</code> 或双击 <code>启动服务器.bat</code><br>
+        2. 服务器地址：<code>http://localhost:8000</code><br>
+        3. 如果服务器未启动，所有API测试都会失败
+    </div>
+    
+    <div class="debug-section">
+        <h2>1. 当前配置检查</h2>
+        <div id="config-display" class="config-display"></div>
+        <button onclick="checkConfig()">检查配置</button>
+        <div id="config-result" class="result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>2. 代理服务器连接测试</h2>
+        <button onclick="testProxyConnection()">测试代理连接</button>
+        <div id="proxy-result" class="result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>3. 图片生成API测试</h2>
+        <button onclick="testImageAPI()">测试图片生成API</button>
+        <div id="image-api-result" class="result"></div>
+        <div id="image-display" class="image-result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>4. 文本生成API测试</h2>
+        <button onclick="testTextAPI()">测试文本生成API</button>
+        <div id="text-api-result" class="result"></div>
+    </div>
+    
+    <div class="debug-section">
+        <h2>5. 完整流程测试</h2>
+        <button onclick="testFullFlow()">测试完整流程</button>
+        <div id="full-flow-result" class="result"></div>
+    </div>
+
+    <script src="config-proxy.js"></script>
+    <script>
+        // 显示当前配置
+        function displayConfig() {
+            const configDiv = document.getElementById('config-display');
+            configDiv.textContent = JSON.stringify(window.VOLCENGINE_CONFIG, null, 2);
+        }
+        
+        // 检查配置
+        function checkConfig() {
+            const resultDiv = document.getElementById('config-result');
+            const config = window.VOLCENGINE_CONFIG;
+            
+            let issues = [];
+            let success = [];
+            
+            // 检查必要的配置项
+            if (!config.accessKey || config.accessKey === 'YOUR_ACCESS_KEY_HERE') {
+                issues.push('❌ accessKey 未配置或使用默认值');
+            } else {
+                success.push('✅ accessKey 已配置');
+            }
+            
+            if (!config.apiEndpoint) {
+                issues.push('❌ apiEndpoint 未配置');
+            } else {
+                success.push('✅ apiEndpoint 已配置: ' + config.apiEndpoint);
+            }
+            
+            if (!config.imageModel) {
+                issues.push('❌ imageModel 未配置');
+            } else {
+                success.push('✅ imageModel 已配置: ' + config.imageModel);
+            }
+            
+            if (!config.textModel) {
+                issues.push('❌ textModel 未配置');
+            } else {
+                success.push('✅ textModel 已配置: ' + config.textModel);
+            }
+            
+            const result = [...success, ...issues].join('\n');
+            resultDiv.textContent = result;
+            resultDiv.className = issues.length > 0 ? 'result error' : 'result success';
+        }
+        
+        // 测试代理服务器连接
+        async function testProxyConnection() {
+            const resultDiv = document.getElementById('proxy-result');
+            resultDiv.textContent = '正在测试代理服务器连接...';
+            resultDiv.className = 'result';
+            
+            try {
+                const config = window.VOLCENGINE_CONFIG;
+                
+                // 测试代理服务器是否运行
+                const response = await fetch('http://localhost:8000/', {
+                    method: 'HEAD',
+                    mode: 'cors'
+                });
+                
+                if (response.ok) {
+                    resultDiv.textContent = `✅ 代理服务器连接成功\n状态码: ${response.status}\n服务器地址: ${config.apiEndpoint}`;
+                    resultDiv.className = 'result success';
+                } else {
+                    resultDiv.textContent = `⚠️ 代理服务器响应异常\n状态码: ${response.status}`;
+                    resultDiv.className = 'result error';
+                }
+            } catch (error) {
+                resultDiv.textContent = `❌ 代理服务器连接失败\n错误: ${error.message}\n\n请确保已启动本地服务器：\n1. 双击 启动服务器.bat\n2. 或运行 python server.py`;
+                resultDiv.className = 'result error';
+            }
+        }
+        
+        // 测试图片生成API
+        async function testImageAPI() {
+            const resultDiv = document.getElementById('image-api-result');
+            const imageDiv = document.getElementById('image-display');
+            
+            resultDiv.textContent = '正在测试图片生成API...';
+            resultDiv.className = 'result';
+            imageDiv.innerHTML = '';
+            
+            try {
+                const config = window.VOLCENGINE_CONFIG;
+                const prompt = '儿童绘本风格插画，小猫去太空探险，第1页，温馨可爱，色彩丰富，卡通风格，适合儿童阅读，高质量插画，明亮色彩，可爱角色，童话风格';
+                
+                const requestBody = {
+                    model: config.imageModel,
+                    prompt: prompt,
+                    response_format: "url",
+                    size: `${config.imageConfig.width}x${config.imageConfig.height}`,
+                    guidance_scale: config.imageConfig.guidance_scale,
+                    watermark: config.imageConfig.watermark
+                };
+
+                console.log('发送请求:', {
+                    url: `${config.apiEndpoint}/api/v3/images/generations`,
+                    body: requestBody
+                });
+
+                const response = await fetch(`${config.apiEndpoint}/api/v3/images/generations`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                console.log('响应状态:', response.status, response.statusText);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('响应数据:', data);
+                
+                resultDiv.textContent = `✅ 图片生成API调用成功\n\n响应数据:\n${JSON.stringify(data, null, 2)}`;
+                resultDiv.className = 'result success';
+                
+                if (data.data && data.data.length > 0 && data.data[0].url) {
+                    const img = document.createElement('img');
+                    img.src = data.data[0].url;
+                    img.alt = '生成的图片';
+                    img.onerror = () => {
+                        console.error('图片加载失败:', data.data[0].url);
+                    };
+                    imageDiv.appendChild(img);
+                } else {
+                    resultDiv.textContent += '\n\n⚠️ 响应中没有找到图片URL';
+                }
+            } catch (error) {
+                resultDiv.textContent = `❌ 图片生成API调用失败\n\n错误详情:\n${error.message}\n\n堆栈跟踪:\n${error.stack}`;
+                resultDiv.className = 'result error';
+                console.error('图片生成API错误:', error);
+            }
+        }
+        
+        // 测试文本生成API
+        async function testTextAPI() {
+            const resultDiv = document.getElementById('text-api-result');
+            
+            resultDiv.textContent = '正在测试文本生成API...';
+            resultDiv.className = 'result';
+            
+            try {
+                const config = window.VOLCENGINE_CONFIG;
+                const prompt = `请为儿童绘本《小猫去太空探险》的第1页写一段温馨有趣的文案，要求：
+1. 语言简单易懂，适合儿童阅读
+2. 长度控制在50字以内
+3. 内容积极向上，富有想象力
+4. 与主题"小猫去太空探险"相关`;
+
+                const requestBody = {
+                    model: config.textModel,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    max_tokens: config.textConfig?.max_tokens || 200,
+                    temperature: config.textConfig?.temperature || 0.7
+                };
+
+                console.log('发送文本生成请求:', {
+                    url: `${config.apiEndpoint}/api/v3/chat/completions`,
+                    body: requestBody
+                });
+
+                const response = await fetch(`${config.apiEndpoint}/api/v3/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                console.log('文本生成响应状态:', response.status, response.statusText);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log('文本生成响应数据:', data);
+                
+                if (data.choices && data.choices.length > 0 && data.choices[0].message) {
+                    resultDiv.textContent = `✅ 文本生成API调用成功\n\n生成的文本:\n${data.choices[0].message.content.trim()}\n\n完整响应:\n${JSON.stringify(data, null, 2)}`;
+                    resultDiv.className = 'result success';
+                } else {
+                    throw new Error('响应格式错误，没有找到生成的文本');
+                }
+            } catch (error) {
+                resultDiv.textContent = `❌ 文本生成API调用失败\n\n错误详情:\n${error.message}\n\n堆栈跟踪:\n${error.stack}`;
+                resultDiv.className = 'result error';
+                console.error('文本生成API错误:', error);
+            }
+        }
+        
+        // 测试完整流程
+        async function testFullFlow() {
+            const resultDiv = document.getElementById('full-flow-result');
+            
+            resultDiv.textContent = '正在测试完整流程...\n';
+            resultDiv.className = 'result';
+            
+            try {
+                // 步骤1: 检查配置
+                resultDiv.textContent += '步骤1: 检查配置...\n';
+                const config = window.VOLCENGINE_CONFIG;
+                if (!config.accessKey || config.accessKey === 'YOUR_ACCESS_KEY_HERE') {
+                    throw new Error('配置检查失败: accessKey 未正确配置');
+                }
+                resultDiv.textContent += '✅ 配置检查通过\n';
+                
+                // 步骤2: 测试图片生成
+                resultDiv.textContent += '步骤2: 测试图片生成...\n';
+                const imagePrompt = '儿童绘本风格插画，小猫去太空探险，第1页，温馨可爱，色彩丰富，卡通风格，适合儿童阅读，高质量插画，明亮色彩，可爱角色，童话风格';
+                
+                const imageRequestBody = {
+                    model: config.imageModel,
+                    prompt: imagePrompt,
+                    response_format: "url",
+                    size: `${config.imageConfig.width}x${config.imageConfig.height}`,
+                    guidance_scale: config.imageConfig.guidance_scale,
+                    watermark: config.imageConfig.watermark
+                };
+
+                const imageResponse = await fetch(`${config.apiEndpoint}/api/v3/images/generations`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(imageRequestBody)
+                });
+
+                if (!imageResponse.ok) {
+                    const errorText = await imageResponse.text();
+                    throw new Error(`图片生成失败: ${imageResponse.status} - ${errorText}`);
+                }
+
+                const imageData = await imageResponse.json();
+                if (!imageData.data || !imageData.data[0] || !imageData.data[0].url) {
+                    throw new Error('图片生成响应格式错误');
+                }
+                resultDiv.textContent += '✅ 图片生成成功\n';
+                
+                // 步骤3: 测试文本生成
+                resultDiv.textContent += '步骤3: 测试文本生成...\n';
+                const textPrompt = `请为儿童绘本《小猫去太空探险》的第1页写一段温馨有趣的文案，要求：
+1. 语言简单易懂，适合儿童阅读
+2. 长度控制在50字以内
+3. 内容积极向上，富有想象力
+4. 与主题"小猫去太空探险"相关`;
+
+                const textRequestBody = {
+                    model: config.textModel,
+                    messages: [
+                        {
+                            role: 'user',
+                            content: textPrompt
+                        }
+                    ],
+                    max_tokens: config.textConfig?.max_tokens || 200,
+                    temperature: config.textConfig?.temperature || 0.7
+                };
+
+                const textResponse = await fetch(`${config.apiEndpoint}/api/v3/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(textRequestBody)
+                });
+
+                if (!textResponse.ok) {
+                    const errorText = await textResponse.text();
+                    throw new Error(`文本生成失败: ${textResponse.status} - ${errorText}`);
+                }
+
+                const textData = await textResponse.json();
+                if (!textData.choices || !textData.choices[0] || !textData.choices[0].message) {
+                    throw new Error('文本生成响应格式错误');
+                }
+                resultDiv.textContent += '✅ 文本生成成功\n';
+                
+                resultDiv.textContent += '\n🎉 完整流程测试通过！\n\n生成的文本:\n' + textData.choices[0].message.content.trim() + '\n\n图片URL:\n' + imageData.data[0].url;
+                resultDiv.className = 'result success';
+                
+            } catch (error) {
+                resultDiv.textContent += `\n❌ 完整流程测试失败\n\n错误详情:\n${error.message}`;
+                resultDiv.className = 'result error';
+                console.error('完整流程测试错误:', error);
+            }
+        }
+        
+        // 页面加载时显示配置
+        window.addEventListener('load', () => {
+            displayConfig();
+        });
+    </script>
+</body>
+</html>
+
